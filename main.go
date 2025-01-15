@@ -84,23 +84,38 @@ func handleConnection(conn net.Conn) {
 	fmt.Println("New connection from:", conn.RemoteAddr())
 
 	// Send the ASCII art logo
-	logo := "         _nnnn_\\n" +
-		"        dGGGGMMb\\n" +
-		"       @p~qp~~qMb\\n" +
-		"       M|@||@) M|\\n" +
-		"       @,----.JM|\\n" +
-		"      JS^\\\\__/  qKL\\n" +
-		"     dZP        qKRb\\n" +
-		"    dZP          qKKb\\n" +
-		"   fZP            SMMb\\n" +
-		"   HZM            MMMM\\n" +
-		"   FqM            MMMM\\n" +
-		" __| \\\".        |\\\\dS\\"qML\\n" +
-		" |    `.       | `' \\\\Zq\\n" +
-		"_)      \\\\.___.,|     .'\\n" +
-		"\\\\____   )MMMMMP|   .'\\n" +
-		"     `-'       `--'\\n"
-	_, err := conn.Write([]byte("Welcome to TCP-Chat!\n" + logo + "\n"))
+	logo := []string{
+		"         _nnnn_",
+		"        dGGGGMMb",
+		"       @p~qp~~qMb",
+		"       M|@||@) M|",
+		"       @,----.JM|",
+		"      JS^\\__/  qKL",
+		"     dZP        qKRb",
+		"    dZP          qKKb",
+		"   fZP            SMMb",
+		"   HZM            MMMM",
+		"   FqM            MMMM",
+		" __| \".        |\\dS\"qML",
+		" |    `.       | `' \\Zq",
+		"_)      \\.___.,|     .'",
+		"\\____   )MMMMMP|   .'",
+		"     `-'       `--'",
+	}
+	
+	_, err := conn.Write([]byte("Welcome to TCP-Chat!\n"))
+	if err != nil {
+		log.Printf("Error sending welcome message: %v", err)
+		return
+	}
+	
+	for _, line := range logo {
+		_, err := conn.Write([]byte(line + "\n"))
+		if err != nil {
+			log.Printf("Error sending logo line: %v", err)
+			return
+		}
+	}
 	if err != nil {
 		log.Printf("Error sending welcome message: %v", err)
 		return
