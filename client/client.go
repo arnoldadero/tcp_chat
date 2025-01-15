@@ -85,23 +85,35 @@ func main() {
 	}
 
 	// Setup connection status monitoring
-	connStatus := make(chan bool)
+	connStatus := make(chan bool, 1)
+	done := make(chan struct{})
+	defer close(done)
+
 	go func() {
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ticker.C:
+				conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 				_, err := conn.Write([]byte{})
 				if err != nil {
-					connStatus <- false
-					close(connStatus)
+					select {
+					case connStatus <- false:
+					case <-done:
+						return
+					}
 					return
 				}
-				connStatus <- true
+				select {
+				case connStatus <- true:
+				case <-done:
+					return
+				}
 			case <-shutdownChan:
-				close(connStatus)
+				return
+			case <-done:
 				return
 			}
 		}
@@ -125,9 +137,8 @@ func main() {
 			select {
 			case status := <-connStatus:
 				if !status {
-					fmt.Println("\nConnection lost. Attempting to reconnect...")
+					fmt.Println("\nConnection lost. Please restart the client.")
 					conn.Close()
-					main() // Restart client
 					return
 				}
 			default:
@@ -152,6 +163,14 @@ func main() {
 					continue
 				}
 
+				// Handle ASCII art lines (they won't have timestamps)
+				if strings.HasPrefix(message, "Welcome to TCP-Chat!") || 
+				   strings.HasPrefix(message, "         _nnnn_") ||
+				   strings.HasPrefix(message, "[ENTER YOUR NAME]:") {
+					fmt.Print(message)
+					continue
+				}
+				
 				// Parse and display message with timestamp
 				parts := strings.SplitN(message, "] ", 2)
 				if len(parts) == 2 {
