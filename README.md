@@ -78,7 +78,7 @@ The test suite includes unit tests, integration tests, and end-to-end tests for 
 - Load previous messages for new clients ([#7](https://github.com/arnoldadero/tcp_chat/issues/7))
 - Prompt client for name ([#6](https://github.com/arnoldadero/tcp_chat/issues/6))
 - Display ASCII logo on client connection ([#5](https://github.com/arnoldadero/tcp_chat/issues/5))
-- Implement basic client functionality (connecting, sending/receiving messages) ([#3](https://github.com/arnoldadero/tcp_chat/issues/3))
+- ~~Implement basic client functionality (connecting, sending/receiving messages)~~ ([#3](https://github.com/arnoldadero/tcp_chat/issues/3)) ✅ Resolved
 
 ## Contributing
 
