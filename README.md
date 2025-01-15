@@ -14,9 +14,10 @@ This application provides a basic TCP-based chat server and client. It allows mu
 - **Message History:** New clients receive all previous chat messages upon joining.
 - **Join/Leave Notifications:** Clients are notified when other users join or leave the chat.
 - **Timestamped Messages:** Messages are displayed with the timestamp of when they were sent.
-- **Private Messaging:** Users can send private messages to specific recipients using the `/msg <username> <message>` command.
-- **User Listing:** Users can list all connected clients using the `/list` command.
-- **Connection Limit:** The server has a maximum connection limit to prevent overload.
+- **Private Messaging:** Users can send private messages to specific recipients using the `/msg <username> <message>` command. The recipient will receive the message prefixed with "[PM from sender]".
+- **User Listing:** Users can list all connected clients using the `/list` command. The server will respond with a comma-separated list of connected users.
+- **Message Size Limit:** Messages are limited to 1024 characters. Attempts to send longer messages will result in an error message.
+- **Connection Limit:** The server has a maximum connection limit to prevent overload (default: 10 connections).
 - **ASCII Art Logo:** A fun ASCII art logo is displayed upon client connection.
 
 ## Getting Started

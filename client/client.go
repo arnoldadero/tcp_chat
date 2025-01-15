@@ -164,9 +164,11 @@ func main() {
 				}
 
 				// Handle ASCII art lines (they won't have timestamps)
-				if strings.HasPrefix(message, "Welcome to TCP-Chat!") || 
+				if strings.HasPrefix(message, "Welcome to TCP-Chat!") ||
 				   strings.HasPrefix(message, "         _nnnn_") ||
-				   strings.HasPrefix(message, "[ENTER YOUR NAME]:") {
+				   strings.HasPrefix(message, "[ENTER YOUR NAME]:") ||
+				   strings.HasPrefix(message, "        dGGGGMMb") ||
+				   strings.HasPrefix(message, "       @p~qp~~qMb") {
 					fmt.Print(message)
 					continue
 				}

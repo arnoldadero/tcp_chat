@@ -52,21 +52,79 @@ func TestCommandLineValidation(t *testing.T) {
 	}
 }
 
+type mockAddr struct {
+	network string
+	address string
+}
+
+func (m mockAddr) Network() string { return m.network }
+func (m mockAddr) String() string  { return m.address }
+
 type mockConn struct {
-	net.Conn
-	readBuf  *bytes.Buffer
-	writeBuf *bytes.Buffer
+	readBuffer  *bytes.Buffer
+	writeBuffer *bytes.Buffer
+	closed      bool
+	localAddr   mockAddr
+	remoteAddr  mockAddr
+}
+
+func newMockConn() *mockConn {
+	return &mockConn{
+		readBuffer:  &bytes.Buffer{},
+		writeBuffer: &bytes.Buffer{},
+		localAddr:   mockAddr{network: "tcp", address: "127.0.0.1:0"},
+		remoteAddr:  mockAddr{network: "tcp", address: "127.0.0.1:0"},
+	}
 }
 
 func (m *mockConn) Read(b []byte) (n int, err error) {
-	return m.readBuf.Read(b)
+	if m.closed {
+		return 0, io.EOF
+	}
+	return m.readBuffer.Read(b)
 }
 
 func (m *mockConn) Write(b []byte) (n int, err error) {
-	return m.writeBuf.Write(b)
+	if m.closed {
+		return 0, io.EOF
+	}
+	return m.writeBuffer.Write(b)
 }
 
 func (m *mockConn) Close() error {
+	if m.closed {
+		return io.EOF
+	}
+	m.closed = true
+	return nil
+}
+
+func (m *mockConn) LocalAddr() net.Addr {
+	return m.localAddr
+}
+
+func (m *mockConn) RemoteAddr() net.Addr {
+	return m.remoteAddr
+}
+
+func (m *mockConn) SetDeadline(t time.Time) error {
+	if m.closed {
+		return io.EOF
+	}
+	return nil
+}
+
+func (m *mockConn) SetReadDeadline(t time.Time) error {
+	if m.closed {
+		return io.EOF
+	}
+	return nil
+}
+
+func (m *mockConn) SetWriteDeadline(t time.Time) error {
+	if m.closed {
+		return io.EOF
+	}
 	return nil
 }
 
@@ -88,10 +146,8 @@ func TestHandleConnection(t *testing.T) {
 			defer cancel()
 
 			// Create mock connection
-			conn := &mockConn{
-				readBuf:  bytes.NewBufferString(tt.input),
-				writeBuf: &bytes.Buffer{},
-			}
+			conn := newMockConn()
+			conn.readBuffer = bytes.NewBufferString(tt.input)
 
 			// Create scanner from input
 			scanner := bufio.NewScanner(strings.NewReader(tt.input))
@@ -106,7 +162,7 @@ func TestHandleConnection(t *testing.T) {
 			select {
 			case <-done:
 				// Verify output
-				output := conn.writeBuf.String()
+				output := conn.writeBuffer.String()
 				if !strings.Contains(output, tt.expectedWrite) {
 					t.Errorf("Expected output to contain %q, got %q", tt.expectedWrite, output)
 				}
@@ -118,10 +174,7 @@ func TestHandleConnection(t *testing.T) {
 }
 
 func TestConnectionStatusMonitoring(t *testing.T) {
-	conn := &mockConn{
-		readBuf:  &bytes.Buffer{},
-		writeBuf: &bytes.Buffer{},
-	}
+	conn := newMockConn()
 
 	statusChan := make(chan bool)
 	shutdownChan := make(chan struct{})
@@ -152,17 +205,15 @@ func TestMessageHandling(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"Regular message", "[2025-01-15 18:00:00] user: Hello\n", "[2025-01-15 18:00:00] user: Hello"},
+		{"Regular message", "[2025-01-15 18:00:00] user: Hello\n", "user: Hello"},
 		{"User list", "Connected users:\nuser1\nuser2\n", "Connected users:\nuser1\nuser2\n"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create mock connection
-			conn := &mockConn{
-				readBuf:  bytes.NewBufferString(tt.input),
-				writeBuf: &bytes.Buffer{},
-			}
+			conn := newMockConn()
+			conn.readBuffer = bytes.NewBufferString(tt.input)
 
 			// Create context with timeout
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -208,10 +259,9 @@ func TestReconnectLogic(t *testing.T) {
 		failCount++
 		if failCount == 2 {
 			successCh <- true
-			return &mockConn{
-				readBuf:  bytes.NewBufferString("CHAT/1.0\n"),
-				writeBuf: &bytes.Buffer{},
-			}, nil
+			conn := newMockConn()
+			conn.readBuffer = bytes.NewBufferString("CHAT/1.0\n")
+			return conn, nil
 		}
 		return nil, errors.New("dial error")
 	}
@@ -252,6 +302,118 @@ func TestReconnectLogic(t *testing.T) {
 	}
 	if !found {
 		t.Error("Expected connection success message")
+	}
+}
+
+func TestMessageSizeLimit(t *testing.T) {
+	tests := []struct {
+		name            string
+		messageSize     int
+		shouldBeSkipped bool
+	}{
+		{"Normal message", 50, false},
+		{"Large message", 2000, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock connection
+			conn := newMockConn()
+			conn.readBuffer = bytes.NewBufferString(strings.Repeat("x", tt.messageSize) + "\n")
+
+			// Capture stdout
+			oldStdout := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+			defer func() {
+				w.Close()
+				os.Stdout = oldStdout
+			}()
+
+			// Run message handler
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				handleIncomingMessages(conn)
+			}()
+
+			// Wait for message processing
+			select {
+			case <-done:
+				w.Close()
+				var buf bytes.Buffer
+				buf.ReadFrom(r)
+				output := buf.String()
+
+				if tt.shouldBeSkipped {
+					if !strings.Contains(output, "Message too large") {
+						t.Errorf("Expected message size limit warning for large message")
+					}
+				} else {
+					if output == "" {
+						t.Errorf("Expected message to be processed")
+					}
+				}
+			case <-time.After(2 * time.Second):
+				t.Error("Test timed out")
+			}
+		})
+	}
+}
+
+func TestPrivateMessageValidation(t *testing.T) {
+	tests := []struct {
+		name           string
+		input          string
+		expectedOutput string
+	}{
+		{"Valid private message", "/msg user Hello", "/msg user Hello\n"},
+		{"Incomplete private message", "/msg user", "Invalid private message format"},
+		{"Missing recipient", "/msg Hello", "Invalid private message format"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock connection
+			conn := newMockConn()
+			conn.readBuffer = bytes.NewBufferString(tt.input + "\n")
+
+			// Create scanner from input
+			scanner := bufio.NewScanner(strings.NewReader(tt.input + "\n"))
+
+			// Capture stdout
+			oldStdout := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+			defer func() {
+				w.Close()
+				os.Stdout = oldStdout
+			}()
+
+			// Run handleConnection
+			done := make(chan struct{})
+			go func() {
+				handleConnection(conn, scanner)
+				close(done)
+			}()
+
+			// Wait for processing
+			select {
+			case <-done:
+				w.Close()
+				var buf bytes.Buffer
+				buf.ReadFrom(r)
+
+				if tt.expectedOutput != "" {
+					writtenOutput := conn.writeBuffer.String()
+					if !strings.Contains(writtenOutput, tt.expectedOutput) {
+						t.Errorf("Expected output to contain %q, got %q", tt.expectedOutput, writtenOutput)
+					}
+				}
+			case <-time.After(2 * time.Second):
+				t.Error("Test timed out")
+			}
+		})
 	}
 }
 

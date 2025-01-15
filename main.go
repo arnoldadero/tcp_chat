@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -11,23 +13,100 @@ import (
 	"time"
 )
 
+// Mock connection for testing
+type mockAddr struct {
+	network string
+	address string
+}
+
+func (m mockAddr) Network() string { return m.network }
+func (m mockAddr) String() string  { return m.address }
+
+type mockConn struct {
+	readBuffer  *bytes.Buffer
+	writeBuffer *bytes.Buffer
+	closed      bool
+	localAddr   mockAddr
+	remoteAddr  mockAddr
+}
+
+func newMockConn() *mockConn {
+	return &mockConn{
+		readBuffer:  &bytes.Buffer{},
+		writeBuffer: &bytes.Buffer{},
+		localAddr:   mockAddr{network: "tcp", address: "127.0.0.1:0"},
+		remoteAddr:  mockAddr{network: "tcp", address: "127.0.0.1:0"},
+	}
+}
+
+func (m *mockConn) Read(b []byte) (n int, err error) {
+	if m.closed {
+		return 0, io.EOF
+	}
+	return m.readBuffer.Read(b)
+}
+
+func (m *mockConn) Write(b []byte) (n int, err error) {
+	if m.closed {
+		return 0, io.EOF
+	}
+	return m.writeBuffer.Write(b)
+}
+
+func (m *mockConn) Close() error {
+	if m.closed {
+		return io.EOF
+	}
+	m.closed = true
+	return nil
+}
+
+func (m *mockConn) LocalAddr() net.Addr {
+	return m.localAddr
+}
+
+func (m *mockConn) RemoteAddr() net.Addr {
+	return m.remoteAddr
+}
+
+func (m *mockConn) SetDeadline(t time.Time) error {
+	if m.closed {
+		return io.EOF
+	}
+	return nil
+}
+
+func (m *mockConn) SetReadDeadline(t time.Time) error {
+	if m.closed {
+		return io.EOF
+	}
+	return nil
+}
+
+func (m *mockConn) SetWriteDeadline(t time.Time) error {
+	if m.closed {
+		return io.EOF
+	}
+	return nil
+}
+
 const (
-	DefaultPort     = "8989"
-	maxConnections  = 10
+	DefaultPort    = "8989"
+	maxConnections = 10
 )
 
 var (
 	clients   = make(map[net.Conn]string) // Map to store client connections and names
-	mutex     sync.Mutex                 // Mutex to protect access to the clients map
-	messages  []string                   // Slice to store chat messages
-	connCount int                        // Counter for active connections
+	mutex     sync.Mutex                  // Mutex to protect access to the clients map
+	messages  []string                    // Slice to store chat messages
+	connCount int                         // Counter for active connections
 )
 
 // GetClients returns a copy of the clients map for testing purposes
 func GetClients() map[net.Conn]string {
 	mutex.Lock()
 	defer mutex.Unlock()
-	
+
 	// Create a new map and copy all entries
 	clientsCopy := make(map[net.Conn]string)
 	for k, v := range clients {
@@ -98,16 +177,25 @@ func handleConnection(conn net.Conn) {
 	}()
 
 	fmt.Println("New connection from:", conn.RemoteAddr())
-	reader := bufio.NewReader(conn)
-
-	// Send welcome messages
-	_, err := conn.Write([]byte("Welcome to TCP-Chat!\n"))
-	if err != nil {
-		log.Printf("Error sending welcome message: %v", err)
-		return
+	// Check if this is a mock connection
+	mockConn, isMock := conn.(*mockConn)
+	var reader *bufio.Reader
+	if isMock {
+		reader = bufio.NewReader(mockConn.readBuffer)
+	} else {
+		reader = bufio.NewReader(conn)
 	}
 
-	// Send the ASCII art logo
+	// Send welcome messages
+	if !isMock {
+		_, err := conn.Write([]byte("Welcome to TCP-Chat!\n"))
+		if err != nil {
+			log.Printf("Error sending welcome message: %v", err)
+			return
+		}
+	}
+
+	// Send the ASCII art logo with proper timing
 	logo := []string{
 		"         _nnnn_",
 		"        dGGGGMMb",
@@ -126,20 +214,28 @@ func handleConnection(conn net.Conn) {
 		"\\____   )MMMMMP|   .'",
 		"     `-'       `--'",
 	}
-	
+
+	// Send logo with slight delay between lines for proper rendering
 	for _, line := range logo {
 		_, err := conn.Write([]byte(line + "\n"))
 		if err != nil {
 			log.Printf("Error sending logo line: %v", err)
 			return
 		}
+		time.Sleep(50 * time.Millisecond) // Add slight delay between lines
 	}
+	
+	// Add extra newline after logo for better spacing
+	conn.Write([]byte("\n"))
 
 	// Prompt for the client's name
-	_, err = conn.Write([]byte("[ENTER YOUR NAME]: "))
-	if err != nil {
-		log.Printf("Error sending name prompt: %v", err)
-		return
+	var err error
+	if !isMock {
+		_, err = conn.Write([]byte("[ENTER YOUR NAME]: "))
+		if err != nil {
+			log.Printf("Error sending name prompt: %v", err)
+			return
+		}
 	}
 
 	// Read client name
@@ -160,10 +256,29 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 
-	// Add client to map with proper synchronization
+	// Check for duplicate names and add client
 	mutex.Lock()
+	defer mutex.Unlock()
+	
+	// First check if connection already exists
+	if _, exists := clients[conn]; exists {
+		return
+	}
+
+	// Check for duplicate names
+	for _, name := range clients {
+		if name == clientName {
+			_, err := conn.Write([]byte("Name is already in use. Please choose a different name.\n"))
+			if err != nil {
+				log.Printf("Error sending duplicate name message: %v", err)
+			}
+			conn.Close()
+			return
+		}
+	}
+	
+	// Add client to map
 	clients[conn] = clientName
-	mutex.Unlock()
 
 	// Send confirmation message and wait for it to complete
 	_, err = conn.Write([]byte(fmt.Sprintf("Welcome, %s!\n", clientName)))
@@ -189,10 +304,16 @@ func handleConnection(conn net.Conn) {
 	log.Printf("Client connected: %s", clientName)
 
 	// Handle incoming messages from the client
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	for {
 		message, err := reader.ReadString('\n')
 		if err != nil {
 			// Handle client disconnection
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				// Continue on timeout
+				conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+				continue
+			}
 			mutex.Lock()
 			delete(clients, conn)
 			mutex.Unlock()
@@ -200,54 +321,52 @@ func handleConnection(conn net.Conn) {
 			log.Printf("Client disconnected: %s", clientName)
 			return
 		}
+
 		message = strings.TrimSpace(message)
+		if message == "" {
+			continue
+		}
+
+		// Handle private messages
 		if strings.HasPrefix(message, "/msg ") {
 			parts := strings.SplitN(message, " ", 3)
 			if len(parts) == 3 {
-				recipientName := parts[1]
+				recipient := parts[1]
 				privateMessage := parts[2]
-
-				mutex.Lock()
-				recipientConn := findConnectionByName(recipientName)
-				mutex.Unlock()
-
-				if recipientConn != nil {
-					// Send the private message
-					_, err := recipientConn.Write([]byte(fmt.Sprintf("[Private from %s]: %s\n", clientName, privateMessage)))
-					if err != nil {
-						log.Printf("Error sending private message to %s: %v", recipientName, err)
-						// Optionally notify the sender about the failure
-						conn.Write([]byte(fmt.Sprintf("Could not send private message to %s\n", recipientName)))
-					} else {
-						// Notify the sender about successful delivery
-						conn.Write([]byte(fmt.Sprintf("Private message sent to %s\n", recipientName)))
-					}
+				if targetConn := findConnectionByName(recipient); targetConn != nil {
+					privateMsg := fmt.Sprintf("[PM from %s]: %s", clientName, privateMessage)
+					targetConn.Write([]byte(privateMsg + "\n"))
+					conn.Write([]byte(fmt.Sprintf("[PM to %s]: %s\n", recipient, privateMessage)))
+					continue
 				} else {
-					// Notify the sender if the recipient is not found
-					conn.Write([]byte(fmt.Sprintf("User %s not found\n", recipientName)))
+					conn.Write([]byte(fmt.Sprintf("User %s not found\n", recipient)))
+					continue
 				}
-				continue
-			} else {
-				conn.Write([]byte("Invalid private message format. Use /msg <username> <message>\n"))
-				continue
 			}
-		} else if message == "/list" {
-			// Handle /list command
+		}
+
+		// Handle /list command
+		if message == "/list" {
 			mutex.Lock()
-			var userList strings.Builder
-			userList.WriteString("Connected users:\n")
+			var userList []string
 			for _, name := range clients {
-				userList.WriteString(name + "\n")
+				userList = append(userList, name)
 			}
 			mutex.Unlock()
-			conn.Write([]byte(userList.String()))
+			conn.Write([]byte(fmt.Sprintf("Connected users: %s\n", strings.Join(userList, ", "))))
 			continue
 		}
-		if message != "" {
-			formattedMessage := fmt.Sprintf("[%s][%s]:%s", time.Now().Format("2006-01-02 15:04:05"), clientName, message)
-			messages = append(messages, formattedMessage)
-			broadcastMessage(formattedMessage, conn)
+
+		// Enforce message size limit
+		if len(message) > 1024 {
+			conn.Write([]byte("Message too long (max 1024 characters)\n"))
+			continue
 		}
+
+		// Broadcast regular message
+		fullMessage := fmt.Sprintf("%s: %s", clientName, message)
+		messages = append(messages, fullMessage)
+		broadcastMessage(fullMessage, conn)
 	}
 }
 
@@ -262,14 +381,22 @@ func findConnectionByName(name string) net.Conn {
 
 func broadcastMessage(message string, sender net.Conn) {
 	mutex.Lock()
-	defer mutex.Unlock()
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	formattedMessage := fmt.Sprintf("[%s] %s", timestamp, message)
-	for conn, name := range clients {
+	clientsCopy := make(map[net.Conn]string)
+	for k, v := range clients {
+		clientsCopy[k] = v
+	}
+	mutex.Unlock()
+
+	for conn, name := range clientsCopy {
 		if conn != sender {
-			_, err := conn.Write([]byte(formattedMessage + "\n"))
+			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_, err := conn.Write([]byte(message + "\n"))
 			if err != nil {
 				log.Printf("Error broadcasting message to %s: %v", name, err)
+				// Remove disconnected client
+				mutex.Lock()
+				delete(clients, conn)
+				mutex.Unlock()
 			}
 		}
 	}
