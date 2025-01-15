@@ -11,8 +11,10 @@ import (
 	"time"
 )
 
-const DefaultPort = "8989"
-const maxConnections = 10
+const (
+	DefaultPort     = "8989"
+	maxConnections  = 10
+)
 
 var (
 	clients   = make(map[net.Conn]string) // Map to store client connections and names
@@ -94,10 +96,10 @@ func handleConnection(conn net.Conn) {
 			log.Printf("Client disconnected: %s", clientName)
 		}
 	}()
-	fmt.Println("New connection from:", conn.RemoteAddr())
 
+	fmt.Println("New connection from:", conn.RemoteAddr())
 	reader := bufio.NewReader(conn)
-	
+
 	// Send welcome messages
 	_, err := conn.Write([]byte("Welcome to TCP-Chat!\n"))
 	if err != nil {
@@ -154,6 +156,7 @@ func handleConnection(conn net.Conn) {
 		if err != nil {
 			log.Printf("Error sending empty name message: %v", err)
 		}
+		conn.Close()
 		return
 	}
 
@@ -166,15 +169,6 @@ func handleConnection(conn net.Conn) {
 	_, err = conn.Write([]byte(fmt.Sprintf("Welcome, %s!\n", clientName)))
 	if err != nil {
 		log.Printf("Error sending welcome message: %v", err)
-		mutex.Lock()
-		delete(clients, conn)
-		mutex.Unlock()
-		return
-	}
-
-	// Flush the connection to ensure message is sent
-	if err := conn.(*net.TCPConn).SetWriteDeadline(time.Now().Add(1 * time.Second)); err != nil {
-		log.Printf("Error setting write deadline: %v", err)
 		mutex.Lock()
 		delete(clients, conn)
 		mutex.Unlock()

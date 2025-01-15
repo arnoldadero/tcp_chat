@@ -42,7 +42,6 @@ func main() {
 	serverAddress := os.Args[1]
 	port := os.Args[2]
 
-	// Validate server address (can be IP or hostname)
 	// Validate port first
 	portNum, portErr := strconv.Atoi(port)
 	if portErr != nil || portNum < 1 || portNum > 65535 {
@@ -119,22 +118,48 @@ func main() {
 
 	fmt.Println("Connected to the server!")
 
-	// handleIncomingMessages processes incoming messages from the server
-	func() {
+	// Handle receiving messages from the server
+	go func() {
 		reader := bufio.NewReader(conn)
 		for {
-			message, err := reader.ReadString('\n')
-			if err != nil {
-				if err != io.EOF {
-					fmt.Println("Error reading message:", err)
+			select {
+			case status := <-connStatus:
+				if !status {
+					fmt.Println("\nConnection lost. Attempting to reconnect...")
+					conn.Close()
+					main() // Restart client
+					return
 				}
-				break
-			}
+			default:
+				message, err := reader.ReadString('\n')
+				if err != nil {
+					if err == io.EOF {
+						fmt.Println("\nServer closed the connection")
+					} else {
+						fmt.Printf("\nConnection error: %v\n", err)
+					}
+					return
+				}
 
-			// Process and print the message
-			message = strings.TrimSpace(message)
-			if message != "" {
-				fmt.Println(message)
+				// Enforce message size limit
+				if len(message) > maxMessageSize {
+					fmt.Println("\nMessage too large, skipping")
+					continue
+				}
+
+				if strings.HasPrefix(message, "Connected users:") {
+					fmt.Print(message)
+					continue
+				}
+
+				// Parse and display message with timestamp
+				parts := strings.SplitN(message, "] ", 2)
+				if len(parts) == 2 {
+					timestamp := strings.TrimPrefix(parts[0], "[")
+					fmt.Printf("[%s] %s", timestamp, parts[1])
+				} else {
+					fmt.Print(message)
+				}
 			}
 		}
 	}()

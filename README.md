@@ -18,19 +18,6 @@ This application provides a basic TCP-based chat server and client. It allows mu
 - **User Listing:** Users can list all connected clients using the `/list` command.
 - **Connection Limit:** The server has a maximum connection limit to prevent overload.
 - **ASCII Art Logo:** A fun ASCII art logo is displayed upon client connection.
-- **Protocol Validation:** Server validates client connections using CHAT/1.0 protocol handshake
-- **Connection Management:** Automatic reconnection with timeout and retry logic
-- **Keep-alive Mechanism:** Continuous connection monitoring with status updates
-- **Message Size Limits:** Messages are limited to 1024 bytes to prevent abuse
-- **Enhanced Error Handling:** Graceful handling of connection errors and server disconnections
-
-## Protocol
-
-The chat protocol uses a simple handshake mechanism:
-
-1. Client connects to server
-2. Client sends "CHAT/1.0\\n" as initial handshake
-3. Server validates handshake and proceeds with connection
 
 ## Getting Started
 
@@ -40,28 +27,8 @@ The chat protocol uses a simple handshake mechanism:
 
 ### Running the Server
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/arnoldadero/tcp_chat.git
-   cd tcp_chat
-   ```
-
-2. Build and run the server:
-   ```bash
-   go run main.go [port]
-   ```
-   If no port is specified, the default port `8989` will be used.
-
-   Alternatively, you can build and run the server as a binary:
-   ```bash
-   go build -o tcp_chat_server
-   ./tcp_chat_server [port]
-   ```
-
-3. (Optional) Run tests:
-   ```bash
-   go test ./...
-   ```
+1. Navigate to the server directory.
+2. Run the command `go run main.go [port]` to start the server. If no port is specified, the default port `8989` will be used.
 
 ### Running the Client
 
