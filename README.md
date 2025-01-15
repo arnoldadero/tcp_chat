@@ -60,7 +60,6 @@ Here are some of the currently open issues for the project:
 - Handle client disconnections gracefully ([#4](https://github.com/arnoldadero/tcp_chat/issues/4))
 - Implement basic client functionality (connecting, sending/receiving messages) ([#3](https://github.com/arnoldadero/tcp_chat/issues/3))
 - Implement basic server functionality (listening, accepting connections, broadcasting messages) ([#2](https://github.com/arnoldadero/tcp_chat/issues/2))
-- Implement basic server functionality (listening, accepting connections, broadcasting messages) ([#1](https://github.com/arnoldadero/tcp_chat/issues/1))
 - dummy issue ([#20](https://github.com/arnoldadero/tcp_chat/issues/20))
 - test issue ([#19](https://github.com/arnoldadero/tcp_chat/issues/19))
 
