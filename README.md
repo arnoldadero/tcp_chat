@@ -19,6 +19,10 @@ This application provides a basic TCP-based chat server and client. It allows mu
 - **Connection Limit:** The server has a maximum connection limit to prevent overload.
 - **ASCII Art Logo:** A fun ASCII art logo is displayed upon client connection.
 - **Protocol Validation:** Server validates client connections using CHAT/1.0 protocol handshake
+- **Connection Management:** Automatic reconnection with timeout and retry logic
+- **Keep-alive Mechanism:** Continuous connection monitoring with status updates
+- **Message Size Limits:** Messages are limited to 1024 bytes to prevent abuse
+- **Enhanced Error Handling:** Graceful handling of connection errors and server disconnections
 
 ## Protocol
 
