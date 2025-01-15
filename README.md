@@ -18,6 +18,7 @@ This application provides a basic TCP-based chat server and client. It allows mu
 - **User Listing:** Users can list all connected clients using the `/list` command.
 - **Connection Limit:** The server has a maximum connection limit to prevent overload.
 - **ASCII Art Logo:** A fun ASCII art logo is displayed upon client connection.
+- **Protocol Validation:** Server validates client connections using CHAT/1.0 protocol handshake
 
 ## Getting Started
 
@@ -59,7 +60,6 @@ Here are some of the currently open issues for the project:
 - Display ASCII logo on client connection ([#5](https://github.com/arnoldadero/tcp_chat/issues/5))
 - Handle client disconnections gracefully ([#4](https://github.com/arnoldadero/tcp_chat/issues/4))
 - Implement basic client functionality (connecting, sending/receiving messages) ([#3](https://github.com/arnoldadero/tcp_chat/issues/3))
-- Implement basic server functionality (listening, accepting connections, broadcasting messages) ([#2](https://github.com/arnoldadero/tcp_chat/issues/2))
 
 ## Contributing
 
